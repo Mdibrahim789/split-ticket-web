@@ -1,4 +1,4 @@
-# SplitTicket BD — Web App (Phase 1 MVP)
+# SplitTicket BD — Web App (Phase 2 — Live Bridge)
 
 Bangladesh Railway split-ticket finder — web version of the
 `TonmoyNaimur/split-ticket-finder` Chrome extension
@@ -10,8 +10,12 @@ Bangladesh Railway split-ticket finder — web version of the
 - ✅ Best-combo ranking — `findRoutes()` ported from the extension
 - ✅ Visual route timeline, route cards, total fare, e-ticket buy links
 - ✅ Passenger filter + no-ticket gap control (0–5)
-- ⏳ Phase 2: live seat data via extension bridge (the Shohoz API needs an
-  e-ticket session token, so a standalone site cannot fetch it directly)
+- ✅ Phase 2: live seat data via the Train Split Finder extension (v0.4+).
+  The extension captures the user's own e-ticket session on
+  eticket.railway.gov.bd, saves it inside the browser only, and runs the
+  scan in its background when this app asks (window.postMessage bridge,
+  `src/lib/bridge.js`). The token never reaches any server; the app only
+  receives seat counts. Without the extension the app runs in demo mode.
 
 ## Run locally
 ```bash
@@ -21,7 +25,7 @@ npm run build    # production build -> dist/
 npm run preview  # preview the build
 ```
 
-## Deploy (Cloudflare Pages)
+## Deploy (Vercel / Cloudflare Pages)
 Build command: `npm run build` • Output directory: `dist`
 
 ## Structure

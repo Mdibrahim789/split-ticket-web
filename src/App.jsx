@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { findRoutes, buyLink } from "./lib/algorithm.js";
 import { CLASSES, fmtDate, parseDate, smartFill } from "./lib/parsers.js";
 import { STATIONS, TRAIN, seatFor } from "./lib/demoData.js";
+import { pingBridge, scanLive } from "./lib/bridge.js";
 
 const tomorrow = () => { const d = new Date(); d.setDate(d.getDate() + 1); return fmtDate(d); };
 const idxOf = (name) => STATIONS.findIndex((s) => s.toLowerCase() === String(name).toLowerCase());
@@ -21,6 +22,19 @@ export default function App() {
   const [counts, setCounts] = useState({});
   const [scanned, setScanned] = useState(false);
   const stopRef = useRef(false);
+  const [bridge, setBridge] = useState(undefined); // undefined=checking, null=not installed
+  const [forceDemo, setForceDemo] = useState(false);
+  const [liveMode, setLiveMode] = useState(false);
+  const [liveTrain, setLiveTrain] = useState("");
+
+  async function checkBridge() {
+    const b = await pingBridge();
+    setBridge(b);
+    return b;
+  }
+  useEffect(() => { checkBridge(); }, []);
+
+  const liveReady = !!(bridge && bridge.hasAuth && !forceDemo);
 
   const fi = idxOf(from), ti = idxOf(to);
   const routes = useMemo(() => {
@@ -49,6 +63,33 @@ export default function App() {
     const parsed = parseDate(date);
     if (!parsed) { setNote("তারিখ বুঝতে পারলাম না — যেমন 24-Oct-2026 লিখো।"); return; }
     setDate(parsed);
+
+    if (liveReady) {
+      setScanning(true); setScanned(false); setCounts({}); setProgress(0); setNote(""); setLiveTrain("");
+      try {
+        const res = await scanLive(
+          { stations: STATIONS, from, to, date: parsed, cls, train },
+          (pr) => { setCounts(pr.counts); setProgress(Math.round((pr.done / pr.total) * 100)); }
+        );
+        setCounts(res.counts);
+        setLiveTrain(res.train ? res.train.tripNumber : "");
+        if (res.warning) setNote("কিছু lookup fail হয়েছে: " + res.warning);
+        setLiveMode(true);
+        setScanned(true);
+      } catch (e) {
+        if (e.code === "AUTH" || e.code === "NO_AUTH") {
+          setBridge({ installed: true, hasAuth: false, authAgeSec: null });
+          setNote("e-ticket session পাওয়া যায়নি/মেয়াদ শেষ। নিচের সবুজ card এর ধাপগুলো করো, তারপর আবার Scan চাপো।");
+        } else if (e.code === "NO_TRAIN") {
+          setNote("Live সাইটে এই ট্রেনটা এই route/date/class এ পাওয়া যায়নি। Train এর নাম/নম্বর, date আর class check করো।");
+        } else {
+          setNote("Live scan fail হয়েছে: " + e.message + " — Demo mode এ আবার চেষ্টা করতে পারো।");
+        }
+      }
+      setScanning(false);
+      return;
+    }
+
     stopRef.current = false;
     setScanning(true); setScanned(false); setCounts({}); setProgress(0); setNote("");
     const pairs = [];
@@ -65,6 +106,7 @@ export default function App() {
       }
     }
     setCounts({ ...acc });
+    setLiveMode(false);
     setScanning(false); setScanned(true);
   }
 
@@ -78,15 +120,55 @@ export default function App() {
             <div className="font-bold text-lg leading-tight">SplitTicket BD</div>
             <div className="text-emerald-200 text-xs">সরাসরি টিকিট না থাকলেও, ভাগে ভাগে যাওয়ার উপায় খুঁজুন</div>
           </div>
-          <span className="bg-amber-400 text-amber-900 text-[11px] font-bold px-2 py-1 rounded-full">Phase 1 MVP • Demo Data</span>
+          <span className="bg-amber-400 text-amber-900 text-[11px] font-bold px-2 py-1 rounded-full">Phase 2 • Live Bridge</span>
         </div>
       </header>
 
-      <div className="bg-amber-50 border-b border-amber-200 text-amber-800 text-xs px-4 py-2 text-center">
-        ⚠️ এটা demo সংস্করণ — seat সংখ্যাগুলো আসল নয়। Live data আসবে Phase 2-তে, extension bridge দিয়ে। টিকিট কেনা যাবে শুধু অফিসিয়াল e-ticket সাইটে।
-      </div>
+      {liveReady ? (
+        <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-800 text-xs px-4 py-2 text-center">
+          🟢 Live mode ready — extension দিয়ে তোমার e-ticket session থেকে আসল seat data আসবে। টিকিট কেনা যাবে শুধু অফিসিয়াল e-ticket সাইটে।
+        </div>
+      ) : (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-800 text-xs px-4 py-2 text-center">
+          ⚠️ Demo mode — seat সংখ্যাগুলো আসল নয়। Live data পেতে নিচের card দেখো।
+        </div>
+      )}
 
       <main className="max-w-5xl mx-auto px-4 py-5 space-y-5">
+        {/* Bridge status */}
+        <section className={`rounded-2xl shadow-sm border p-4 text-sm ${liveReady ? "bg-emerald-50 border-emerald-200" : "bg-white"}`}>
+          {bridge === undefined && <p>🔌 Extension check হচ্ছে…</p>}
+          {bridge === null && (
+            <div>
+              <p className="font-semibold">🔌 Extension পাওয়া যায়নি — Demo mode চলছে</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Live seat data পেতে PC এর Chrome এ <b>Train Split Finder</b> extension (v0.4+) install করো, তারপর এই পেজটা reload দাও।
+                Extension: <a className="underline text-emerald-700 font-semibold" href="https://github.com/Mdibrahim789/split-ticket-finder" target="_blank" rel="noreferrer">github.com/Mdibrahim789/split-ticket-finder</a>
+              </p>
+            </div>
+          )}
+          {bridge && !bridge.hasAuth && (
+            <div>
+              <p className="font-semibold">🔌 Extension আছে, কিন্তু e-ticket session নেই</p>
+              <ol className="text-xs text-slate-600 mt-1 list-decimal ml-4 space-y-0.5">
+                <li>নতুন tab এ <a className="underline text-emerald-700 font-semibold" href="https://eticket.railway.gov.bd" target="_blank" rel="noreferrer">eticket.railway.gov.bd</a> খোলো (login থাকলে ভালো)</li>
+                <li>যেকোনো একটা train search করো — তাহলেই session টা extension এ save হবে</li>
+                <li>এই tab এ ফিরে এসে নিচে "আবার check করো" চাপো</li>
+              </ol>
+              <button onClick={checkBridge} className="mt-2 border border-emerald-700 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-semibold">আবার check করো</button>
+            </div>
+          )}
+          {bridge && bridge.hasAuth && (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="font-semibold">🟢 Extension connected — Live scan হবে</p>
+              <span className="text-xs text-slate-500">e-ticket session save হয়েছে {bridge.authAgeSec == null ? "" : bridge.authAgeSec < 90 ? "এইমাত্র" : Math.round(bridge.authAgeSec / 60) + " মিনিট আগে"}</span>
+              <label className="text-xs ml-auto flex items-center gap-1">
+                <input type="checkbox" checked={forceDemo} onChange={(e) => setForceDemo(e.target.checked)} /> Demo mode এ scan করো
+              </label>
+            </div>
+          )}
+        </section>
+
         {/* Smart fill */}
         <section className="bg-white rounded-2xl shadow-sm border p-4">
           <label className="font-semibold text-sm">✨ নিজের ভাষায় লিখুন (Smart Fill)</label>
@@ -127,9 +209,10 @@ export default function App() {
           <div className="text-xs text-slate-500 mt-2">Route: {TRAIN.name} ({TRAIN.number}) • {STATIONS[0]} → {STATIONS[STATIONS.length - 1]} • মোট {STATIONS.length}টা stop (demo)</div>
           <div className="flex gap-2 mt-4">
             <button onClick={runScan} disabled={scanning} className="bg-emerald-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl font-semibold text-sm">
-              {scanning ? `Scanning… ${progress}%` : "🔍 পুরো ট্রেন Scan করো"}
+              {scanning ? `Scanning… ${progress}%` : liveReady ? "🔍 Live Scan করো (আসল data)" : "🔍 পুরো ট্রেন Scan করো (Demo)"}
             </button>
-            {scanning && <button onClick={() => (stopRef.current = true)} className="border px-4 py-2.5 rounded-xl text-sm">Stop</button>}
+            {scanning && !liveReady && <button onClick={() => (stopRef.current = true)} className="border px-4 py-2.5 rounded-xl text-sm">Stop</button>}
+            {scanning && liveReady && <span className="text-xs text-slate-500 self-center">Live scan এ প্রতি pair এ ~১.৫ সেকেন্ড করে লাগতে পারে — tab টা খোলা রাখো।</span>}
           </div>
           {scanning && <div className="h-2 bg-slate-100 rounded-full mt-3 overflow-hidden"><div className="h-full bg-emerald-600 transition-all" style={{ width: progress + "%" }} /></div>}
         </section>
@@ -137,7 +220,9 @@ export default function App() {
         {/* Best route timeline */}
         {scanned && best && (
           <section className="bg-white rounded-2xl shadow-sm border p-4">
-            <h2 className="font-bold">সেরা উপায়: {from} → {to}</h2>
+            <h2 className="font-bold">সেরা উপায়: {from} → {to} {liveMode
+              ? <span className="bg-emerald-600 text-white text-[11px] px-2 py-0.5 rounded-full align-middle">LIVE{liveTrain ? " • " + liveTrain : ""}</span>
+              : <span className="bg-amber-400 text-amber-900 text-[11px] px-2 py-0.5 rounded-full align-middle">DEMO DATA</span>}</h2>
             <Timeline route={best} date={date} cls={cls} />
             <p className="text-xs text-slate-500 mt-2">💡 টিপ: যে segment-এ seat সবচেয়ে কম, সেই টিকিটটা আগে কাটো। প্রতিটা টিকিটে seat number আলাদা হতে পারে।</p>
           </section>
@@ -181,7 +266,7 @@ export default function App() {
         {(scanning || scanned) && Object.keys(counts).length > 0 && (
           <section className="bg-white rounded-2xl shadow-sm border p-4 overflow-x-auto">
             <h3 className="font-bold text-sm mb-1">Seat Matrix</h3>
-            <p className="text-xs text-slate-500 mb-2">সংখ্যা = ঐ From → To তে online seat (demo)। নীল outline = তোমার পুরো যাত্রা cover করে।</p>
+            <p className="text-xs text-slate-500 mb-2">সংখ্যা = ঐ From → To তে online seat ({liveMode ? "LIVE — e-ticket থেকে আনা" : "demo"})। নীল outline = তোমার পুরো যাত্রা cover করে।</p>
             <table className="text-[11px] border-collapse">
               <thead>
                 <tr><th className="th">From \ To</th>{STATIONS.slice(1).map((s) => <th key={s} className="th">{s}</th>)}</tr>
@@ -221,7 +306,7 @@ export default function App() {
         </section>
 
         <footer className="text-center text-[11px] text-slate-400 pb-6">
-          এটি বাংলাদেশ রেলওয়ের অফিসিয়াল অ্যাপ নয়। SplitTicket BD — Phase 1 MVP (demo data)।
+          এটি বাংলাদেশ রেলওয়ের অফিসিয়াল অ্যাপ নয়। SplitTicket BD — Phase 2 (extension bridge দিয়ে live data; extension ছাড়া demo)।
           Algorithm: মূল extension <span className="underline">TonmoyNaimur/split-ticket-finder</span> থেকে port করা, fork: Mdibrahim789/split-ticket-finder।
         </footer>
       </main>
