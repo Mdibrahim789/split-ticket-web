@@ -3,6 +3,7 @@ import { findRoutes, buyLink } from "./lib/algorithm.js";
 import { CLASSES, fmtDate, parseDate, smartFill } from "./lib/parsers.js";
 import { STATIONS, TRAIN, seatFor } from "./lib/demoData.js";
 import { pingBridge, scanLive } from "./lib/bridge.js";
+import Planner from "./Planner.jsx";
 
 const tomorrow = () => { const d = new Date(); d.setDate(d.getDate() + 1); return fmtDate(d); };
 const idxOf = (name) => STATIONS.findIndex((s) => s.toLowerCase() === String(name).toLowerCase());
@@ -22,6 +23,7 @@ export default function App() {
   const [counts, setCounts] = useState({});
   const [scanned, setScanned] = useState(false);
   const stopRef = useRef(false);
+  const [tab, setTab] = useState("planner"); // planner = web-only (default), scan = demo/extension
   const [bridge, setBridge] = useState(undefined); // undefined=checking, null=not installed
   const [forceDemo, setForceDemo] = useState(false);
   const [liveMode, setLiveMode] = useState(false);
@@ -120,11 +122,15 @@ export default function App() {
             <div className="font-bold text-lg leading-tight">SplitTicket BD</div>
             <div className="text-emerald-200 text-xs">সরাসরি টিকিট না থাকলেও, ভাগে ভাগে যাওয়ার উপায় খুঁজুন</div>
           </div>
-          <span className="bg-amber-400 text-amber-900 text-[11px] font-bold px-2 py-1 rounded-full">Phase 2 • Live Bridge</span>
+          <span className="bg-amber-400 text-amber-900 text-[11px] font-bold px-2 py-1 rounded-full">v0.3 • Planner</span>
         </div>
       </header>
 
-      {liveReady ? (
+      {tab === "planner" ? (
+        <div className="bg-sky-50 border-b border-sky-200 text-sky-800 text-xs px-4 py-2 text-center">
+          🧭 Planner mode — train/station এর নাম আসল data; seat check হবে অফিসিয়াল e-ticket সাইটে, app সাজিয়ে দেবে কোন order-এ check করবে।
+        </div>
+      ) : liveReady ? (
         <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-800 text-xs px-4 py-2 text-center">
           🟢 Live mode ready — extension দিয়ে তোমার e-ticket session থেকে আসল seat data আসবে। টিকিট কেনা যাবে শুধু অফিসিয়াল e-ticket সাইটে।
         </div>
@@ -134,7 +140,13 @@ export default function App() {
         </div>
       )}
 
+      <div className="max-w-5xl mx-auto px-4 pt-4 flex gap-2">
+        <button onClick={() => setTab("planner")} className={`px-4 py-2 rounded-xl text-sm font-bold ${tab === "planner" ? "bg-emerald-700 text-white" : "bg-white border"}`}>🧭 Planner (Web-only)</button>
+        <button onClick={() => setTab("scan")} className={`px-4 py-2 rounded-xl text-sm font-bold ${tab === "scan" ? "bg-emerald-700 text-white" : "bg-white border"}`}>🔍 Scan (Demo / Extension)</button>
+      </div>
+
       <main className="max-w-5xl mx-auto px-4 py-5 space-y-5">
+        {tab === "planner" ? <Planner /> : <>
         {/* Bridge status */}
         <section className={`rounded-2xl shadow-sm border p-4 text-sm ${liveReady ? "bg-emerald-50 border-emerald-200" : "bg-white"}`}>
           {bridge === undefined && <p>🔌 Extension check হচ্ছে…</p>}
@@ -309,6 +321,7 @@ export default function App() {
           এটি বাংলাদেশ রেলওয়ের অফিসিয়াল অ্যাপ নয়। SplitTicket BD — Phase 2 (extension bridge দিয়ে live data; extension ছাড়া demo)।
           Algorithm: মূল extension <span className="underline">TonmoyNaimur/split-ticket-finder</span> থেকে port করা, fork: Mdibrahim789/split-ticket-finder।
         </footer>
+        </>}
       </main>
       <style>{`.inp{width:100%;border:1px solid #cbd5e1;border-radius:0.75rem;padding:0.5rem 0.75rem;font-size:0.875rem}.th{border:1px solid #e2e8f0;padding:2px 5px;background:#f8fafc;white-space:nowrap}.td{border:1px solid #e2e8f0;padding:2px 5px;text-align:center;white-space:nowrap}`}</style>
     </div>

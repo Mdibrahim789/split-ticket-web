@@ -1,4 +1,4 @@
-# SplitTicket BD — Web App (Phase 2 — Live Bridge)
+# SplitTicket BD — Web App (v0.3 — Planner mode)
 
 Bangladesh Railway split-ticket finder — web version of the
 `TonmoyNaimur/split-ticket-finder` Chrome extension
@@ -36,3 +36,14 @@ Build command: `npm run build` • Output directory: `dist`
 
 > Demo data only — seat numbers are NOT real. Not an official
 > Bangladesh Railway app.
+
+## Planner mode (default, web-only)
+Live seat data needs a logged-in e-ticket session token, which a website
+cannot obtain — so the default Planner mode works without any extension:
+- Real station/train/class lists from the Railway's public handshake data
+  (`src/lib/railwayData.js`, fetched 2026-10-23: 263 stations, 160 trains)
+- Editable stop lists + user-saved routes (`src/lib/routes.js`)
+- `src/lib/planner.js` builds an ordered checklist of station pairs to
+  verify on the official site; marking pairs available/unavailable
+  assembles confirmed split combos automatically.
+The Scan tab keeps the demo mode and the optional extension bridge.
